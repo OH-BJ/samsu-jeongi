@@ -1,0 +1,9 @@
+# 이전 프로토타입·버린 그림 (올리지 않음)
+archive/
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+# 픽셀랩 계정 ID가 들어 있음 (공개 저장소에 올리지 않음)
+tools/pl-fetch.py

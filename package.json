@@ -1,0 +1,8 @@
+{
+  "name": "samsu-jeongi",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sheets": "node tools/render-sheet.mjs all"
+  }
+}

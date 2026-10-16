@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>도트 검수 갤러리</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
+<style>
+  :root { --bg: #181425; --panel: #262b44; --line: #3a4466; --text: #e8ecf4; --sub: #8b9bb4; --accent: #feae34; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: Galmuri11, sans-serif; font-size: 13px; }
+  header { display: flex; gap: 6px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0 12px 0 0; color: var(--accent); }
+  .tab { background: var(--panel); color: var(--text); border: 1px solid var(--line); padding: 7px 12px; cursor: pointer; font: inherit; border-radius: 4px; }
+  .tab.on { background: var(--accent); color: #181425; border-color: var(--accent); }
+  main { display: flex; min-height: calc(100vh - 50px); }
+  nav { width: 230px; border-right: 1px solid var(--line); padding: 10px; flex-shrink: 0; }
+  nav .grp { color: var(--sub); margin: 12px 0 4px; font-size: 11px; }
+  nav button { display: block; width: 100%; text-align: left; background: none; border: 0; color: var(--text); padding: 6px 8px; font: inherit; cursor: pointer; border-radius: 4px; }
+  nav button.on { background: var(--panel); color: var(--accent); }
+  section { flex: 1; padding: 14px; overflow: auto; }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .bar label { color: var(--sub); }
+  .bar select, .bar input, .bar button { font: inherit; background: var(--panel); color: var(--text); border: 1px solid var(--line); padding: 5px 8px; border-radius: 4px; }
+  .anim { margin-bottom: 18px; }
+  .anim h3 { font-size: 12px; color: var(--sub); margin: 0 0 6px; font-weight: normal; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
+  .frame { text-align: center; color: var(--sub); font-size: 11px; }
+  .frame canvas { display: block; border: 1px solid var(--line); margin-bottom: 3px; }
+  .swatch { display: inline-block; width: 14px; height: 14px; border: 1px solid #000; margin-right: 2px; vertical-align: middle; }
+  .info { color: var(--sub); margin-top: 6px; line-height: 1.7; }
+  #stage { display: block; margin: 0 auto; max-width: 100%; border: 1px solid var(--line); }
+  .hint { color: var(--sub); text-align: center; margin-top: 8px; }
+  @media (max-width: 700px) { main { flex-direction: column; } nav { width: auto; border-right: 0; border-bottom: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>도트 검수 갤러리 · M1</h1>
+  <button class="tab on" data-tab="sprites">스프라이트</button>
+  <button class="tab" data-tab="battle">전투 화면 미리보기</button>
+  <button class="tab" data-tab="gacha">뽑기 연출</button>
+  <button class="tab" data-tab="compare">8방향 보기 (픽셀랩)</button>
+</header>
+<main>
+  <nav id="nav"></nav>
+  <section id="view"></section>
+</main>
+<script type="module">
+import { MANIFEST } from '../art/manifest.js';
+import { PALETTE, RARITY } from '../art/palette.js';
+import { toRGBA, colorsUsed, flipX } from '../art/lib.js';
+import { windowGrid, slotGrid } from '../art/sprites/ui/window.js';
+import { GAUNTLETS } from '../art/sprites/items/gauntlets.js';
+
+const SPR = {};
+// 외부 PNG (PixelLab 생성물)
+const PNG = {};
+// 픽셀랩 파일 이름은 화면 기준: south-west = 화면 왼쪽을 봄(아군), south-east = 화면 오른쪽을 봄(적)
+const DIRS = [['south', '① 정면'], ['south-west', '② 앞 대각선 · 화면 왼쪽을 봄'], ['west', '③ 옆 · 화면 왼쪽을 봄 (아군용)'], ['north-west', '④ 뒤 대각선 · 왼쪽'],
+              ['north', '⑤ 뒤'], ['north-east', '⑥ 뒤 대각선 · 오른쪽'], ['east', '⑦ 옆 · 화면 오른쪽을 봄 (적용)'], ['south-east', '⑧ 앞 대각선 · 화면 오른쪽을 봄']];
+const PL_CHARS = ['haram', 'iro', 'museoe', 'serin', 'golem'];
+await Promise.all(PL_CHARS.flatMap(n => DIRS.map(([d]) => new Promise(res => { const im = new Image(); im.onload = () => { PNG[n + '_' + d] = im; res(); }; im.onerror = res; im.src = '../assets/pixellab/' + n + '/' + d + '.png'; }))));
+await new Promise(res => { const im = new Image(); im.onload = () => { PNG.bg = im; res(); }; im.onerror = res; im.src = '../assets/pixellab/bg/rock-pass.png'; });
+await new Promise(res => { const im = new Image(); im.onload = () => { PNG.boss = im; res(); }; im.onerror = res; im.src = '../assets/pixellab/boss/urs-king.png'; });
+// 옆모습 단일 그림 (Pixen, 방향 West): 8방향 캐릭터가 정면을 보는 느낌이라 새로 만든 것
+await Promise.all(['serin', 'iro', 'haram'].map(n => new Promise(res => { const im = new Image(); im.onload = () => { PNG[n + '_side'] = im; res(); }; im.onerror = res; im.src = '../assets/pixellab/side/' + n + '.png'; })));
+// 사람마다 그림을 따로 정한다 (무쇠는 앞 대각선 그림도 적을 보지만, 나머지는 새로 만든 옆모습 그림을 쓴다)
+const PARTY_DIR = { museoe: 'south-west', serin: 'side', haram: 'side', iro: 'side' };
+let haramDir = null;
+try { haramDir = localStorage.getItem('party-dir4'); } catch (e) {}
+for (const p of MANIFEST) {
+  try { const m = await import('../art/' + p); SPR[m.default.id] = m.default; }
+  catch (e) { console.warn('도트 불러오기 실패:', p, e); }
+}
+const ids = Object.keys(SPR);
+
+// 격자 → 캔버스 (캐시)
+const cache = new Map();
+function img(g) {
+  if (cache.has(g)) return cache.get(g);
+  const c = document.createElement('canvas'); c.width = g.w; c.height = g.h;
+  c.getContext('2d').putImageData(new ImageData(toRGBA(g), g.w, g.h), 0, 0);
+  cache.set(g, c); return c;
+}
+const BGS = {
+  '어두운 체크': (ctx, w, h, s) => { for (let y = 0; y < h; y += 4 * s) for (let x = 0; x < w; x += 4 * s) { ctx.fillStyle = ((x + y) / (4 * s)) % 2 ? '#3a4466' : '#323b5a'; ctx.fillRect(x, y, 4 * s, 4 * s); } },
+  '밝은 배경': (ctx, w, h) => { ctx.fillStyle = '#c0cbdc'; ctx.fillRect(0, 0, w, h); },
+  '반석국 (게임 배경)': (ctx, w, h) => { const gr = ctx.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#124e89'); gr.addColorStop(0.55, '#5a6988'); gr.addColorStop(0.56, '#733e39'); gr.addColorStop(1, '#3e2731'); ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h); },
+  '검정': (ctx, w, h) => { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h); },
+};
+let state = { tab: 'sprites', id: ids[0], zoom: 6, bg: '어두운 체크', playing: true, flip: false };
+try { Object.assign(state, JSON.parse(localStorage.getItem('gallery-state') || '{}')); } catch (e) {}
+const save = () => { try { localStorage.setItem('gallery-state', JSON.stringify(state)); } catch (e) {} };
+
+const nav = document.getElementById('nav'), view = document.getElementById('view');
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => { state.tab = b.dataset.tab; save(); render(); });
+
+// ───────────── 스프라이트 탭 ─────────────
+let timers = [];
+function renderSprites() {
+  const groups = {};
+  ids.forEach(id => (groups[SPR[id].group || '기타'] ||= []).push(id));
+  nav.innerHTML = Object.entries(groups).map(([g, list]) =>
+    `<div class="grp">${g}</div>` + list.map(id => `<button data-id="${id}" class="${id === state.id ? 'on' : ''}">${SPR[id].name}</button>`).join('')).join('');
+  nav.querySelectorAll('button').forEach(b => b.onclick = () => { state.id = b.dataset.id; save(); render(); });
+  const s = SPR[state.id] || SPR[ids[0]];
+  const all = Object.values(s.anims).flatMap(a => a.frames);
+  const used = [...new Set(all.flatMap(colorsUsed))];
+  view.innerHTML = `
+    <div class="bar">
+      <label>확대</label><input type="range" min="1" max="10" value="${state.zoom}" id="zoom"><span>${state.zoom}배</span>
+      <label>배경</label><select id="bg">${Object.keys(BGS).map(k => `<option ${k === state.bg ? 'selected' : ''}>${k}</option>`).join('')}</select>
+      <button id="play">${state.playing ? '❚❚ 정지' : '▶ 재생'}</button>
+      <label><input type="checkbox" id="flip" ${state.flip ? 'checked' : ''}> 좌우 반전</label>
+    </div>
+    <div class="info">${s.name} · ${s.w}×${s.h}px · 사용 색 ${used.length}개 &nbsp;${used.map(c => `<span class="swatch" title="${c} ${PALETTE[c]}" style="background:${PALETTE[c]}"></span>`).join('')}</div>
+    <div id="anims"></div>`;
+  view.querySelector('#zoom').oninput = e => { state.zoom = +e.target.value; save(); render(); };
+  view.querySelector('#bg').onchange = e => { state.bg = e.target.value; save(); render(); };
+  view.querySelector('#play').onclick = () => { state.playing = !state.playing; save(); render(); };
+  view.querySelector('#flip').onchange = e => { state.flip = e.target.checked; save(); render(); };
+  const box = view.querySelector('#anims');
+  const z = state.zoom;
+  for (const [name, a] of Object.entries(s.anims)) {
+    const wrap = document.createElement('div'); wrap.className = 'anim';
+    wrap.innerHTML = `<h3>${name} · ${a.frames.length}프레임 · ${a.ms}ms</h3>`;
+    const row = document.createElement('div'); row.className = 'row';
+    // 재생 칸
+    const live = document.createElement('canvas'); live.width = s.w * z; live.height = s.h * z;
+    const lw = document.createElement('div'); lw.className = 'frame'; lw.append(live, '재생');
+    row.append(lw);
+    let fi = 0;
+    const drawF = (c, g) => { const x = c.getContext('2d'); x.imageSmoothingEnabled = false; BGS[state.bg](x, c.width, c.height, z); x.drawImage(img(state.flip ? flipX(g) : g), 0, 0, c.width, c.height); };
+    drawF(live, a.frames[0]);
+    if (state.playing && a.frames.length > 1) timers.push(setInterval(() => { fi = (fi + 1) % a.frames.length; drawF(live, a.frames[fi]); }, a.ms));
+    // 프레임 낱장
+    a.frames.forEach((g, i) => {
+      const c = document.createElement('canvas'); c.width = s.w * Math.max(1, Math.floor(z / 2)); c.height = s.h * Math.max(1, Math.floor(z / 2));
+      drawF(c, g);
+      const f = document.createElement('div'); f.className = 'frame'; f.append(c, `${i + 1}`);
+      row.append(f);
+    });
+    wrap.append(row); box.append(wrap);
+  }
+}
+
+// ───────────── 공통: 480×270 스테이지 ─────────────
+const W = 480, H = 270;
+let raf = null;
+function stage(scale) {
+  view.innerHTML = `<canvas id="stage" width="${W}" height="${H}"></canvas><div class="hint" id="hint"></div>`;
+  const c = view.querySelector('#stage');
+  const fit = () => { const s = Math.max(1, Math.min(4, Math.floor((view.clientWidth - 30) / W))); c.style.width = W * s + 'px'; c.style.height = H * s + 'px'; };
+  fit(); window.onresize = fit;
+  const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = false;
+  return { c, ctx };
+}
+function text(ctx, s, x, y, color = '#f4f4f4', align = 'left', size = 12) {
+  ctx.font = `${size}px Galmuri11, monospace`; ctx.textAlign = align; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#181425'; ctx.fillText(s, x + 1, y + 1); ctx.fillStyle = color; ctx.fillText(s, x, y);
+}
+const frameAt = (a, t) => { const n = a.frames.length; return a.frames[((Math.floor(Math.max(0, t) / a.ms) % n) + n) % n]; };
+function drawBG(ctx) {
+  if (PNG.bg) { ctx.drawImage(PNG.bg, 0, 0); return; }
+  // 반석국 산길 배경 (임시)
+  const gr = ctx.createLinearGradient(0, 0, 0, 150); gr.addColorStop(0, '#124e89'); gr.addColorStop(1, '#0099db');
+  ctx.fillStyle = gr; ctx.fillRect(0, 0, W, 150);
+  for (let x = 0; x < W; x += 2) {
+    const h1 = 40 + Math.sin(x * 0.02) * 18 + Math.sin(x * 0.07) * 6; ctx.fillStyle = '#5a6988'; ctx.fillRect(x, 150 - h1, 2, h1);
+    const h2 = 18 + Math.sin(x * 0.04 + 2) * 8; ctx.fillStyle = '#3a4466'; ctx.fillRect(x, 150 - h2, 2, h2);
+  }
+  for (let y = 150; y < H; y++) { ctx.fillStyle = Math.floor((y - 150) / 6) % 2 ? '#733e39' : '#b86f50'; ctx.fillRect(0, y, W, 1); }
+  ctx.fillStyle = '#3e2731'; for (let i = 0; i < 40; i++) ctx.fillRect((i * 97) % W, 152 + (i * 37) % 30, 3, 1);
+}
+
+// ───────────── 전투 화면 미리보기 ─────────────
+function renderBattle() {
+  nav.innerHTML = '<div class="grp">전투 화면 미리보기</div><div class="info">실제 게임 해상도(480×270)에 확정 후보 도트를 배치한 모습입니다. 이 화면의 크기 비율을 보고 해상도를 판단해 주세요.</div>';
+  const { ctx } = stage();
+  const win = img(windowGrid(300, 80)), win2 = img(windowGrid(172, 80, { accent: 'O' }));
+  const hands = SPR.hands.anims.all.frames.map(img);
+  const t0 = performance.now();
+  const loop = t => {
+    const e = t - t0;
+    drawBG(ctx);
+    const shadow = (x, y, w) => { ctx.fillStyle = 'rgba(24,20,37,0.35)'; ctx.fillRect(x - w / 2, y - 2, w, 4); };
+    // 적 (화면 오른쪽을 봄 = 픽셀랩 east)
+    const bob = k => Math.floor((e + k) / 400) % 2;
+    if (PNG.boss) { shadow(110, 168, 70); ctx.drawImage(PNG.boss, 46, 48 + bob(0)); }
+    else { shadow(110, 168, 64); ctx.drawImage(img(frameAt(SPR['urs-king'].anims.idle, e)), 46, 45); }
+    const gol = PNG['golem_east'];
+    shadow(42, 182, 34); if (gol) ctx.drawImage(gol, 10, 119 + bob(200));
+    shadow(186, 186, 34); if (gol) ctx.drawImage(gol, 154, 123 + bob(500));
+    // 아군 (화면 왼쪽을 봄 = 픽셀랩 west / south-west). 앞줄 2명, 뒷줄 2명으로 엇갈려 배치
+    const party = [['serin', 330, 96], ['haram', 404, 92], ['museoe', 292, 116], ['iro', 366, 122]];
+    party.forEach(([n, x, y], k) => { const p = PNG[n + '_' + (haramDir || PARTY_DIR[n])]; shadow(x + 32, y + 62, 28); if (p) ctx.drawImage(p, x, y + bob(k * 150)); });
+    // 자세 확률 표시
+    ctx.fillStyle = 'rgba(24,20,37,0.75)'; ctx.fillRect(56, 26, 112, 16);
+    text(ctx, '바위 70  가위 15  보 15', 112, 28, '#feae34', 'center', 10);
+    // 하단 UI
+    ctx.drawImage(win, 4, 186);
+    text(ctx, '이로의 차례 — 손을 고르세요', 16, 196, '#feae34');
+    const labels = ['바위', '가위', '보'], odds = [['무', '15'], ['패', '70'], ['승', '70']];
+    hands.forEach((h, i) => {
+      const x = 22 + i * 92, y = 214;
+      const sel = i === 2;
+      ctx.fillStyle = sel ? '#feae34' : '#262b44'; ctx.fillRect(x - 2, y - 2, 36, 36);
+      ctx.fillStyle = '#181425'; ctx.fillRect(x, y, 32, 32);
+      ctx.drawImage(h, x, y + (sel ? -2 : 0));
+      text(ctx, labels[i], x + 40, y + 4, sel ? '#feae34' : '#f4f4f4');
+      text(ctx, '승리 ' + ['15', '15', '70'][i] + '%', x + 40, y + 19, i === 2 ? '#63c74d' : '#8b9bb4', 'left', 10);
+    });
+    ctx.drawImage(win2, 304, 186);
+    text(ctx, '이로', 316, 196);
+    ctx.fillStyle = '#181425'; ctx.fillRect(350, 199, 110, 7); ctx.fillStyle = '#63c74d'; ctx.fillRect(351, 200, 80, 5);
+    text(ctx, 'HP 118/150', 350, 208, '#c0cbdc', 'left', 10);
+    ctx.fillStyle = '#181425'; ctx.fillRect(350, 223, 110, 6); ctx.fillStyle = '#0099db'; ctx.fillRect(351, 224, 60, 4);
+    text(ctx, '연승 ★3   운명 ███░', 316, 238, '#feae34', 'left', 10);
+    // 위쪽 턴 순서
+    ctx.fillStyle = 'rgba(24,20,37,0.6)'; ctx.fillRect(0, 0, W, 18);
+    text(ctx, '턴 순서 ▶ 이로 · 반석왕 우르 · 세린 · 하람 · 돌골렘 · 무쇠 · 돌골렘', 8, 3, '#c0cbdc', 'left', 10);
+    document.getElementById('hint').textContent = '3초마다 대기 ↔ 공격 동작이 바뀝니다.';
+    raf = requestAnimationFrame(loop);
+  };
+  raf = requestAnimationFrame(loop);
+}
+
+// ───────────── 뽑기 연출 ─────────────
+const RATES = [['N', 62], ['U', 25], ['R', 9.5], ['E', 2.9], ['L', 0.5], ['M', 0.09], ['X', 0.01]];
+const RCOLOR = { N: ['#c0cbdc', '#8b9bb4'], U: ['#a7f070', '#63c74d'], R: ['#2ce8f5', '#0099db'], E: ['#c9a0ff', '#8f5bd6'], L: ['#fff4b8', '#ffd23f'], M: ['#ff6b9a', '#d6004c'], X: ['#ffffff', '#ffffff'] };
+function renderGacha() {
+  nav.innerHTML = `<div class="grp">뽑기 연출 목업</div>
+    <button data-r="?">확률대로 뽑기 (장비 우물)</button>
+    ${['N', 'R', 'E', 'L', 'M'].map(r => `<button data-r="${r}">${RARITY[r].name} 연출 보기</button>`).join('')}
+    <div class="info">확률: ${RATES.map(([r, p]) => `${RARITY[r].name} ${p}%`).join(' · ')}<br>건틀릿 아이콘은 등급별 샘플입니다 (고급은 아직 없어 일반 아이콘 사용).</div>`;
+  const { ctx } = stage();
+  let show = null;
+  const ICON = { N: 0, U: 0, R: 1, E: 2, L: 3, M: 4, X: 4 };
+  const start = r => {
+    if (r === '?') { let x = Math.random() * 100; r = 'N'; for (const [k, p] of RATES) { if (x < p) { r = k; break; } x -= p; } }
+    show = { r, t0: performance.now(), parts: [] };
+  };
+  nav.querySelectorAll('button').forEach(b => b.onclick = () => start(b.dataset.r));
+  view.querySelector('#stage').onclick = () => start('?');
+  const iconFrames = SPR.gauntlets.anims;
+  const loop = t => {
+    ctx.fillStyle = '#181425'; ctx.fillRect(0, 0, W, H);
+    // 우물
+    ctx.fillStyle = '#262b44'; ctx.fillRect(170, 200, 140, 40); ctx.fillStyle = '#3a4466'; ctx.fillRect(160, 196, 160, 8);
+    ctx.fillStyle = '#124e89'; ctx.fillRect(180, 204, 120, 10);
+    if (!show) { text(ctx, '왼쪽 버튼이나 화면을 누르면 우물에 손을 넣습니다', W / 2, 120, '#8b9bb4', 'center'); raf = requestAnimationFrame(loop); return; }
+    const e = t - show.t0, r = show.r, [hi, base] = RCOLOR[r];
+    const big = r === 'L' || r === 'M' || r === 'X';
+    // 1) 빛구슬이 우물에서 떠오름 (0~700ms)
+    if (e < 700) { const y = 200 - e / 700 * 90; ctx.fillStyle = e > 450 ? base : '#c0cbdc'; ctx.beginPath(); ctx.arc(240, y, 6 + Math.sin(e / 50) * 1.5, 0, 7); ctx.fill(); }
+    // 2) 빛기둥 (700~1500ms)
+    if (e >= 700) {
+      const k = Math.min(1, (e - 700) / 400), w = (big ? 70 : 36) * k;
+      const shake = big && e < 1600 ? (Math.random() - 0.5) * 6 : 0;
+      ctx.save(); ctx.translate(shake, shake);
+      if (r === 'X') { const hue = (e / 5) % 360; ctx.fillStyle = `hsla(${hue},90%,70%,0.6)`; } else { ctx.fillStyle = base; ctx.globalAlpha = 0.55; }
+      ctx.fillRect(240 - w / 2, 0, w, 210); ctx.globalAlpha = 0.9; ctx.fillStyle = hi; ctx.fillRect(240 - w / 6, 0, w / 3, 210); ctx.globalAlpha = 1;
+      if (big) for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + e / 900; ctx.strokeStyle = hi; ctx.globalAlpha = 0.35; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(240, 110); ctx.lineTo(240 + Math.cos(a) * 300, 110 + Math.sin(a) * 300); ctx.stroke(); ctx.globalAlpha = 1; }
+      ctx.restore();
+      if (show.parts.length === 0) for (let i = 0; i < (big ? 90 : 30); i++) show.parts.push({ x: 240, y: 110, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.7) * 6, life: 600 + Math.random() * 900 });
+    }
+    // 3) 카드 공개 (1500ms~)
+    if (e >= 1500) {
+      const k = Math.min(1, (e - 1500) / 250);
+      ctx.fillStyle = 'rgba(24,20,37,0.55)'; ctx.fillRect(0, 0, W, H);
+      const cw = 96 * k, ch = 120;
+      ctx.drawImage(img(slotGrid(r === 'X' ? 'M' : r, 30)), 240 - cw / 2, 50, cw, ch);
+      if (k >= 1) {
+        const anim = r === 'L' ? iconFrames.legend : (r === 'M' || r === 'X') ? iconFrames.myth : null;
+        const icon = anim ? frameAt(anim, e) : iconFrames.all.frames[ICON[r]];
+        ctx.drawImage(img(icon), 240 - 36, 74, 72, 72);
+        text(ctx, `【${RARITY[r].name}】`, W / 2, 178, hi, 'center');
+        text(ctx, GAUNTLETS[ICON[r]].name, W / 2, 196, '#f4f4f4', 'center');
+        const line = { N: '음… 다음엔 좋은 게 나올 거야!', U: '나쁘지 않아!', R: '오, 파란 빛이다!', E: '우와아! 보라색!!', L: '저, 전설이야?! 진짜로?!', M: '……이건, 나도 처음 봐.', X: '세상이… 갈라졌어.' }[r];
+        text(ctx, `라운: "${line}"`, W / 2, 222, '#c0cbdc', 'center');
+      }
+    }
+    // 파티클
+    show.parts.forEach(p => { const age = e - 700; if (age < 0 || age > p.life) return; ctx.globalAlpha = 1 - age / p.life; ctx.fillStyle = Math.random() < 0.5 ? hi : base; ctx.fillRect(p.x + p.vx * age / 16, p.y + p.vy * age / 16 + 0.002 * age * age / 16, 2, 2); });
+    ctx.globalAlpha = 1;
+    raf = requestAnimationFrame(loop);
+  };
+  raf = requestAnimationFrame(loop);
+}
+
+// ───────────── 하람 (픽셀랩) 8방향 ─────────────
+function renderCompare() {
+  const who = state.plWho || 'haram';
+  nav.innerHTML = `<div class="grp">픽셀랩 캐릭터 (64×64)</div>${PL_CHARS.map(n => `<button data-who="${n}" class="${n === who ? 'on' : ''}">${({haram:'하람',iro:'이로',museoe:'무쇠',serin:'세린',golem:'돌골렘'})[n]}</button>`).join('')}<div class="info">8방향을 모두 보여 줍니다. 아군은 전투에서 <b>화면 왼쪽(적 쪽)</b>을 봅니다. 칸을 누르면 그 방향이 <b>전투 화면 미리보기의 아군 전체</b>에 쓰입니다.<br><br>현재 선택: <b id="cur">${(haramDir ? DIRS.find(d => d[0] === haramDir)[1] : '사람별 기본값')}</b></div>`;
+  view.innerHTML = `<div class="bar"><label>확대</label><input type="range" min="2" max="8" value="${state.dirZoom || 4}" id="dz"><span>${state.dirZoom || 4}배</span>
+    <label>배경</label><select id="bg">${Object.keys(BGS).map(k => `<option ${k === state.bg ? 'selected' : ''}>${k}</option>`).join('')}</select></div><div class="row" id="dirs"></div>`;
+  nav.querySelectorAll('button[data-who]').forEach(b => b.onclick = () => { state.plWho = b.dataset.who; save(); render(); });
+  view.querySelector('#dz').oninput = e => { state.dirZoom = +e.target.value; save(); render(); };
+  view.querySelector('#bg').onchange = e => { state.bg = e.target.value; save(); render(); };
+  const z = state.dirZoom || 4, box = view.querySelector('#dirs');
+  DIRS.forEach(([d, label]) => {
+    const im = PNG[who + '_' + d];
+    const c = document.createElement('canvas'); c.width = 64 * z; c.height = 64 * z; c.style.cursor = 'pointer';
+    if (d === haramDir) c.style.outline = '3px solid #feae34';
+    const x = c.getContext('2d'); x.imageSmoothingEnabled = false; BGS[state.bg](x, c.width, c.height, z);
+    if (im) x.drawImage(im, 0, 0, c.width, c.height);
+    c.onclick = () => { haramDir = d; try { localStorage.setItem('party-dir4', d); } catch (e) {} render(); };
+    const f = document.createElement('div'); f.className = 'frame'; f.append(c, `${label} (${d})`);
+    box.append(f);
+  });
+}
+
+function render() {
+  timers.forEach(clearInterval); timers = [];
+  if (raf) cancelAnimationFrame(raf); raf = null;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === state.tab));
+  if (state.tab === 'battle') renderBattle();
+  else if (state.tab === 'gacha') renderGacha();
+  else if (state.tab === 'compare') renderCompare();
+  else renderSprites();
+}
+await document.fonts.load('12px Galmuri11').catch(() => {});
+render();
+</script>
+</body>
+</html>

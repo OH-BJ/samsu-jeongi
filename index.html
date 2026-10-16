@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#181425">
+<title>삼수전기</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #181425; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  /* 노치·홈 바를 피하는 안전 영역 */
+  #wrap { position: fixed; inset: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); display: flex; align-items: center; justify-content: center; }
+  #game { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  #rotate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; background: #181425; color: #feae34; font-family: Galmuri11, sans-serif; font-size: 16px; text-align: center; }
+  #rotate .icon { font-size: 40px; animation: turn 1.6s ease-in-out infinite; }
+  @keyframes turn { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(90deg); } }
+  #overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(24, 20, 37, 0.85); font-family: Galmuri11, sans-serif; }
+  #overlay .box { background: #262b44; border: 2px solid #feae34; padding: 14px; width: min(90vw, 520px); color: #f4f4f4; font-size: 13px; }
+  #overlay textarea { -webkit-user-select: text; user-select: text; touch-action: auto; width: 100%; box-sizing: border-box; height: 110px; margin: 8px 0; font: 12px monospace; background: #181425; color: #c0cbdc; border: 1px solid #5a6988; }
+  #overlay button { font: inherit; background: #3a4466; color: #f4f4f4; border: 1px solid #8b9bb4; padding: 6px 12px; margin-right: 6px; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" width="480" height="270"></canvas></div>
+<div id="rotate"><div class="icon">📱</div>기기를 가로로 돌려 주세요</div>
+<div id="overlay"><div class="box"></div></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
