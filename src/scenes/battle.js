@@ -39,9 +39,9 @@ const PTY = { x: 392, y: PANEL_Y, w: 84, h: 80 };
 // opts.onEnd(result): 이야기·지도 전투. 주면 끝난 뒤 「계속」 버튼으로 돌려준다 (HP는 저장 데이터에 이어진다)
 // opts.retry: 지면 「다시 도전」만 보여 준다 (이야기 전투)
 export class BattleScene {
-  constructor(G, enc, { seed = (Math.random() * 2 ** 32) >>> 0, onEnd = null, retry = false } = {}) {
+  constructor(G, enc, { seed = (Math.random() * 2 ** 32) >>> 0, onEnd = null, retry = false, onSettle = null } = {}) {
     this.G = G; this.key = enc; this.enc = typeof enc === 'string' ? ENCOUNTERS[enc] : enc; this.seed = seed;
-    this.onEnd = onEnd; this.retry = retry; this.persist = !!onEnd;
+    this.onEnd = onEnd; this.retry = retry; this.persist = !!onEnd; this.onSettle = onSettle;
     this.t = 0; this.msg = null; this.floats = []; this.reveal = null; this.banner = null;
     this.mode = 'busy'; this.menu = null; this.focus = null; this.pending = null; this.extra = [];
     this.fateArmed = false; this.ended = null;
@@ -289,6 +289,7 @@ export class BattleScene {
       save('auto', d);
       this.rewards = rw;
     }
+    this.onSettle?.(result);
     const btns = [];
     if (this.onEnd) {
       if (result === 'lose' && this.retry) btns.push(new Button({ x: W / 2 - 60, y: 150, w: 120, h: 26, label: '다시 도전', onClick: () => { this.G.scenes.pop(); this.G.scenes.push(new BattleScene(this.G, this.key, { onEnd: this.onEnd, retry: true })); } }));

@@ -7,22 +7,22 @@ export const CHAPTER = { id: 1, name: '1장 · 굳어가는 반석', town: '반�
 // (배율은 tools/sim/chapter-sim.mjs 로 맞춘다)
 export const ZONES = [
   {
-    name: '산길 입구', cols: 6, scale: 1.1,
-    types: [['battle', 5], ['event', 3], ['treasure', 2], ['rest', 1], ['shop', 1]],
+    name: '산길 입구', cols: 6, minBattles: 2, scale: 1.05,
+    types: [['battle', 7], ['event', 2], ['treasure', 1.5], ['rest', 1], ['shop', 0.5]],
     normal: [['rubble_golem', 'rubble_golem'], ['stone_golem'], ['rubble_golem', 'stone_golem']],
     elite: [['warden']],
     intro: 'zone1_intro',
   },
   {
-    name: '굳은 마을길', cols: 7, scale: 0.9,
-    types: [['battle', 5], ['elite', 1], ['event', 3], ['treasure', 2], ['rest', 1], ['shop', 1]],
+    name: '굳은 마을길', cols: 7, minBattles: 3, scale: 0.78,
+    types: [['battle', 6.5], ['elite', 1.5], ['event', 2], ['treasure', 1], ['rest', 1], ['shop', 0.5]],
     normal: [['stone_golem', 'moss_golem'], ['rubble_golem', 'stone_golem', 'rubble_golem'], ['moss_golem', 'moss_golem']],
     elite: [['warden']],
     intro: 'zone2_intro',
   },
   {
-    name: '왕성 앞', cols: 6, boss: true, scale: 0.7,
-    types: [['battle', 5], ['elite', 2], ['event', 2], ['treasure', 1], ['rest', 2]],
+    name: '왕성 앞', cols: 6, boss: true, minBattles: 3, scale: 0.6,
+    types: [['battle', 4.5], ['elite', 1.5], ['event', 2.5], ['treasure', 1], ['rest', 1.5]],
     normal: [['stone_golem', 'moss_golem', 'stone_golem'], ['stone_golem', 'stone_golem'], ['moss_golem', 'rubble_golem', 'moss_golem']],
     elite: [['warden', 'rubble_golem']],
     boss: ['rubble_golem', 'urs_king', 'rubble_golem'],
@@ -30,7 +30,7 @@ export const ZONES = [
   },
 ];
 
-export const BOSS = encounter('반석왕 우르', ZONES[2].boss, { canFlee: false, desc: '1장 보스', scale: 0.69 });
+export const BOSS = encounter('반석왕 우르', ZONES[2].boss, { canFlee: false, desc: '1장 보스', scale: 0.64 });
 
 // 사건 노드 (구역 상관없이 무작위로 하나). 대본은 SCRIPTS에 있다
 export const EVENTS = ['ev_smith', 'ev_child', 'ev_merchant', 'ev_spring', 'ev_small_well', 'ev_dice'];

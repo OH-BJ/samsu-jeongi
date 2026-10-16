@@ -42,7 +42,31 @@ export function generateZone(zone, seed) {
       }
     });
   }
+  ensureBattles(nodes, zone.minBattles ?? 2, rng);
   return { nodes, cols: cols.length };
+}
+
+// 어느 길로 가든 전투(강적 포함)를 최소 min번 만나게 한다.
+// 전투가 가장 적은 길을 찾아, 그 길의 사건·보물 노드(없으면 휴식·상점)를 전투로 바꾸기를 반복한다.
+const isFight = nd => nd.type === 'battle' || nd.type === 'elite';
+function ensureBattles(nodes, min, rng) {
+  for (let guard = 0; guard < 20; guard++) {
+    // 각 노드까지 오는 길 중 전투가 가장 적은 길 (앞 노드 기억)
+    const best = nodes.map(() => Infinity), prev = nodes.map(() => -1);
+    best[0] = 0;
+    for (const nd of nodes) for (const id of nd.next) {
+      const v = best[nd.id] + (isFight(nodes[id]) ? 1 : 0);
+      if (v < best[id]) { best[id] = v; prev[id] = nd.id; }
+    }
+    const end = nodes[nodes.length - 1];
+    if (best[end.id] >= min) return;
+    const path = [];
+    for (let id = prev[end.id]; id > 0; id = prev[id]) path.push(nodes[id]);
+    const cand = path.filter(n => n.type === 'event' || n.type === 'treasure');
+    const pick = cand.length ? cand : path.filter(n => !isFight(n));
+    if (!pick.length) return;
+    rng.pick(pick).type = 'battle';
+  }
 }
 
 // 노드 종류를 볼 수 있는지: 지금 위치에서 reveal 열 앞까지 (탈것으로 늘어난다), 지도 전체 공개면 모두

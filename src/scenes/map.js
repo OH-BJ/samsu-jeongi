@@ -45,7 +45,13 @@ export class MapScene {
     this.zone = generateZone(this.zoneDef, (this.m.seed + this.m.zone * 101) >>> 0);
     this.rng = createRng((this.m.seed ^ (this.m.visited.length * 2654435761)) >>> 0);
   }
-  enter() { this.maybeIntro(); }
+  enter() { this.start(); }
+  async start() {
+    await this.maybeIntro();
+    // 끝내지 못한 노드가 있으면 (전투 도중에 껐다 켠 경우) 그 노드부터 다시
+    const p = this.m.pending;
+    if (p && this.zone.nodes[p.id]) { toast('끝내지 못한 곳부터 다시 시작해요', { color: C.pale }); this.moveTo(this.zone.nodes[p.id], true); }
+  }
   async maybeIntro() {
     const z = this.zoneDef;
     if (z.intro && !this.m.introSeen[this.m.zone]) {
@@ -72,31 +78,67 @@ export class MapScene {
   }
   revealOpts() { const mt = this.mount; return { reveal: 1 + (mt.reveal || 0), mapAll: !!mt.mapAll }; }
 
-  async moveTo(nd) {
+  // 노드로 이동: 먼저 「가는 중(pending)」으로 저장하고, 노드가 끝난 뒤에야 위치를 확정한다.
+  // → 전투나 사건 도중에 껐다 켜도 그 노드를 건너뛰지 않고 처음부터 다시 한다 (같은 적, 같은 사건)
+  async moveTo(nd, resume = false) {
     if (this.busy) return;
     this.busy = true;
-    if (this.skipMode) { this.m.skipUsed = true; this.skipMode = false; toast('그리핀이 한 칸을 건너뛰었다!', { color: C.cyan }); }
-    this.m.cur = nd.id; this.m.visited.push(nd.id);
+    if (!resume) {
+      if (this.skipMode) { this.m.skipUsed = true; this.skipMode = false; toast('그리핀이 한 칸을 건너뛰었다!', { color: C.cyan }); }
+      // 이동 중 운명석 줍기 (탈것)
+      if (this.mount.pickStones && this.rng.chance(0.15)) { this.G.data.stones++; toast('이동 중에 운명석을 주웠다! +1', { color: C.cyan }); }
+      this.m.pending = { id: nd.id, ...this.prepare(nd) };
+      save('auto', this.G.data);
+    }
     sfx('confirm');
-    // 이동 중 운명석 줍기 (탈것)
-    if (this.mount.pickStones && this.rng.chance(0.15)) { this.G.data.stones++; toast('이동 중에 운명석을 주웠다! +1', { color: C.cyan }); }
-    save('auto', this.G.data);
-    await this.resolve(nd);
+    const result = await this.resolve(nd, this.m.pending);
+    if (result === 'done') {
+      this.commit(nd);
+      // 구역 끝 → 다음 구역
+      if (nd.exit && !this.zoneDef.boss) {
+        this.m.zone++; this.m.cur = 0; this.m.visited = [0];
+        this.load();
+        toast(`다음 구역: ${this.zoneDef.name}`, { color: C.gold, ms: 2400 });
+        save('auto', this.G.data);
+        this.busy = false;
+        await this.maybeIntro();
+      }
+      save('auto', this.G.data);
+    }
     this.busy = false;
   }
 
-  async resolve(nd) {
-    const G = this.G, d = G.data, z = this.zoneDef, rng = this.rng;
-    if (nd.type === 'battle' || nd.type === 'elite') {
-      const ids = rng.pick(nd.type === 'elite' ? z.elite : z.normal);
-      const enc = encounter(nd.type === 'elite' ? '강적 출현' : z.name, ids, { canFlee: true, scale: z.scale || 1 });
-      const result = await new Promise(res => G.scenes.push(new BattleScene(G, enc, { onEnd: res })));
-      if (result === 'lose') { this.gameOver(); return; }
-    } else if (nd.type === 'event') {
+  // 노드 끝: 위치 확정 (두 번 불려도 한 번만)
+  commit(nd) {
+    if (!this.m.pending || this.m.pending.id !== nd.id) return;
+    this.m.cur = nd.id; this.m.visited.push(nd.id); this.m.pending = null;
+    this.rng = createRng((this.m.seed ^ (this.m.visited.length * 2654435761)) >>> 0);
+    save('auto', this.G.data);
+  }
+
+  // 노드에서 무엇이 나올지 미리 정해 둔다 (다시 들어와도 같은 내용)
+  prepare(nd) {
+    const z = this.zoneDef, rng = this.rng;
+    if (nd.type === 'battle' || nd.type === 'elite') return { enemies: rng.pick(nd.type === 'elite' ? z.elite : z.normal) };
+    if (nd.type === 'event') {
       const pool = this.ch.EVENTS.filter(e => !this.m.usedEvents.includes(e));
       const ev = rng.pick(pool.length ? pool : this.ch.EVENTS);
       this.m.usedEvents.push(ev);
-      await runScript(G, this.ch.SCRIPTS[ev], { bg: this.ch.CHAPTER.bg });
+      return { event: ev };
+    }
+    return {};
+  }
+
+  // 돌려주는 값: 'done' (노드 끝) | 'lost' (전멸) | 'boss' (장 끝)
+  async resolve(nd, pend) {
+    const G = this.G, d = G.data, z = this.zoneDef, rng = this.rng;
+    if (nd.type === 'battle' || nd.type === 'elite') {
+      const enc = encounter(nd.type === 'elite' ? '강적 출현' : z.name, pend.enemies, { canFlee: true, scale: z.scale || 1 });
+      // 승패가 정해지는 순간 위치를 확정한다 (보상을 받은 뒤 껐다 켜서 같은 전투를 또 하는 일이 없게)
+      const result = await new Promise(res => G.scenes.push(new BattleScene(G, enc, { onEnd: res, onSettle: r => { if (r !== 'lose') this.commit(nd); } })));
+      if (result === 'lose') { this.gameOver(); return 'lost'; }
+    } else if (nd.type === 'event') {
+      await runScript(G, this.ch.SCRIPTS[pend.event], { bg: this.ch.CHAPTER.bg });
     } else if (nd.type === 'treasure') {
       const gold = rng.int(80, 150);
       d.gold += gold;
@@ -111,30 +153,22 @@ export class MapScene {
     } else if (nd.type === 'boss') {
       await runScript(G, this.ch.SCRIPTS.boss_before, { bg: this.ch.CHAPTER.bg });
       const result = await new Promise(res => G.scenes.push(new BattleScene(G, this.ch.BOSS, { onEnd: res, retry: false })));
-      if (result !== 'win') { this.gameOver(); return; }
+      if (result !== 'win') { this.gameOver(); return 'lost'; }
       await runScript(G, this.ch.SCRIPTS.boss_after, { bg: this.ch.CHAPTER.bg });
+      this.m.pending = null;
       save('auto', d);
       G.scenes.pop();
       this.onBossWin?.();
-      return;
+      return 'boss';
     }
-    // 구역 끝 → 다음 구역
-    if (nd.exit && !this.zoneDef.boss) {
-      this.m.zone++; this.m.cur = 0; this.m.visited = [0];
-      this.load();
-      toast(`다음 구역: ${this.zoneDef.name}`, { color: C.gold, ms: 2400 });
-      await this.maybeIntro();
-    }
-    save('auto', d);
+    return 'done';
   }
 
-  // 전멸: 금화 20%를 잃고 마을로. 지도 위치는 그대로 남는다
+  // 전멸: 금화 20%를 잃고 마을로. 위치는 진 노드 바로 앞 그대로 (다시 도전할 수 있다)
   gameOver() {
     const d = this.G.data, lost = Math.floor(d.gold * 0.2);
     d.gold -= lost; fullHeal(d);
-    // 진 노드는 다시 도전할 수 있게 한 칸 되돌린다
-    d.progress.map.visited.pop();
-    d.progress.map.cur = d.progress.map.visited[d.progress.map.visited.length - 1] ?? 0;
+    d.progress.map.pending = null;
     save('auto', d);
     toast(`전멸… 금화 ${lost}을 잃고 마을로 돌아왔다`, { color: C.red, ms: 3000 });
     this.G.scenes.pop(); this.onLeave?.();
