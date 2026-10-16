@@ -218,17 +218,19 @@ export class BattleScene {
     });
     this.menu = new Menu(btns, { onCancel: () => this.openActions(u) });
     this.menu.keyboard = true;
+    // 마우스·터치로도 돌아갈 수 있게 (쓸 수 있는 스킬이 없어도 갇히지 않는다)
+    this.extra = [new Button({ x: ACT.x + 8, y: ACT.y + 50, w: 70, h: 24, label: '← 뒤로', size: 11, onClick: () => this.openActions(u) })];
   }
 
   pickTarget(u, skillId) {
     const alive = this.battle.alive('enemy');
     if (alive.length === 1) { this.answer({ type: 'skill', skill: skillId, target: alive[0] }); return; }
-    this.mode = 'target'; this.menu = null;
+    this.mode = 'target'; this.menu = null; this.extra = [];
     this.targeting = { list: alive, i: Math.max(0, alive.indexOf(this.lastTarget)), done: t => { this.lastTarget = t; this.answer({ type: 'skill', skill: skillId, target: t }); }, back: () => this.openActions(u), side: 'enemy' };
   }
 
   pickAlly(u, make, list = null) {
-    this.mode = 'target'; this.menu = null;
+    this.mode = 'target'; this.menu = null; this.extra = [];
     const alive = list || this.battle.alive('party');
     this.targeting = { list: alive, i: Math.max(0, alive.indexOf(u)), done: t => this.answer(make(t)), back: () => this.openActions(u), side: 'party' };
   }
@@ -477,7 +479,7 @@ export class BattleScene {
     if (this.mode === 'action' || this.mode === 'skill' || (this.mode === 'target' && this.menu === null && this.targeting?.side)) {
       if (this.mode === 'action') this.menu.draw(ctx);
       else text(ctx, this.mode === 'skill' ? '스킬을 고르세요' : '대상 고르는 중', ACT.x + 10, ACT.y + 10, { size: 10, color: C.mist });
-      if (this.mode !== 'action') text(ctx, 'Esc/아래 화면: 뒤로', ACT.x + 10, ACT.y + 60, { size: 10, color: C.slate });
+      if (this.mode === 'target') text(ctx, 'Esc/아래 화면: 뒤로', ACT.x + 10, ACT.y + 60, { size: 10, color: C.slate });
     } else if (this.mode === 'hand') {
       const hi = this.handInfo;
       text(ctx, hi.attack ? `${hi.actor.name} — ${SKILLS[hi.skill].name}` : `${hi.enemy.name}의 ${SKILLS[hi.skill].name}!`, ACT.x + 8, ACT.y + 8, { size: 10, color: hi.attack ? C.gold : C.pink });
